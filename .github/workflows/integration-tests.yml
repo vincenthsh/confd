@@ -75,6 +75,7 @@ jobs:
 
       - name: Build and Install
         run: |
+					git config --global --add safe.directory /__w/confd/confd
           make build
           sudo make install
 
