@@ -2,11 +2,11 @@ package template
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/abtreece/confd/pkg/backends"
+	"github.com/spf13/afero"
 )
 
 const (
@@ -50,7 +50,7 @@ val: abc
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/key", "abc")
+			tr.Store.Set("/test/key", "abc")
 		},
 	},
 
@@ -82,9 +82,9 @@ val: mary
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/user", "mary")
-			tr.store.Set("/test/pass", "abc")
-			tr.store.Set("/nada/url", "url")
+			tr.Store.Set("/test/user", "mary")
+			tr.Store.Set("/test/pass", "abc")
+			tr.Store.Set("/nada/url", "url")
 		},
 	},
 
@@ -108,8 +108,8 @@ url = http://www.abc.com
 user = bob
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/url", "http://www.abc.com")
-			tr.store.Set("/test/user", "bob")
+			tr.Store.Set("/test/url", "http://www.abc.com")
+			tr.Store.Set("/test/user", "bob")
 		},
 	},
 
@@ -138,9 +138,9 @@ val: mary
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/user", "mary")
-			tr.store.Set("/test/pass", "abc")
-			tr.store.Set("/nada/url", "url")
+			tr.Store.Set("/test/user", "mary")
+			tr.Store.Set("/test/pass", "abc")
+			tr.Store.Set("/nada/url", "url")
 		},
 	},
 
@@ -167,7 +167,7 @@ br: bar
 bz: baz
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", "foo:bar:baz")
+			tr.Store.Set("/test/data", "foo:bar:baz")
 		},
 	},
 
@@ -190,7 +190,7 @@ key: {{$data}}
 key: VALUE
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", `Value`)
+			tr.Store.Set("/test/data", `Value`)
 		},
 	},
 
@@ -213,7 +213,7 @@ key: {{$data}}
 key: value
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", `Value`)
+			tr.Store.Set("/test/data", `Value`)
 		},
 	},
 
@@ -246,8 +246,8 @@ ip: 192.168.10.12
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data/1", `{"Id":"host1", "IP":"192.168.10.11"}`)
-			tr.store.Set("/test/data/2", `{"Id":"host2", "IP":"192.168.10.12"}`)
+			tr.Store.Set("/test/data/1", `{"Id":"host1", "IP":"192.168.10.11"}`)
+			tr.Store.Set("/test/data/2", `{"Id":"host2", "IP":"192.168.10.12"}`)
 		},
 	},
 
@@ -276,7 +276,7 @@ num: 3
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data/", `["1", "2", "3"]`)
+			tr.Store.Set("/test/data/", `["1", "2", "3"]`)
 		},
 	},
 
@@ -307,9 +307,9 @@ value: ghi
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data/abc", "123")
-			tr.store.Set("/test/data/def", "456")
-			tr.store.Set("/test/data/ghi", "789")
+			tr.Store.Set("/test/data/abc", "123")
+			tr.Store.Set("/test/data/def", "456")
+			tr.Store.Set("/test/data/ghi", "789")
 		},
 	},
 
@@ -338,9 +338,9 @@ value: jkl
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data/abc", "123")
-			tr.store.Set("/test/data/def/ghi", "456")
-			tr.store.Set("/test/data/jkl/mno", "789")
+			tr.Store.Set("/test/data/abc", "123")
+			tr.Store.Set("/test/data/def/ghi", "456")
+			tr.Store.Set("/test/data/jkl/mno", "789")
 		},
 	},
 	templateTest{
@@ -365,8 +365,8 @@ dir: /test/data
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", "parent")
-			tr.store.Set("/test/data/def", "child")
+			tr.Store.Set("/test/data", "parent")
+			tr.Store.Set("/test/data/def", "child")
 		},
 	},
 	templateTest{
@@ -391,8 +391,8 @@ ip: 127.0.0.1
 
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", "parent")
-			tr.store.Set("/test/data/def", "child")
+			tr.Store.Set("/test/data", "parent")
+			tr.Store.Set("/test/data/def", "child")
 		},
 	},
 	templateTest{
@@ -421,8 +421,8 @@ ip: ::1
 `,
 		},
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", "parent")
-			tr.store.Set("/test/data/def", "child")
+			tr.Store.Set("/test/data", "parent")
+			tr.Store.Set("/test/data/def", "child")
 		},
 	},
 	templateTest{
@@ -461,8 +461,8 @@ ip: ::1
 `,
 		},
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", "parent")
-			tr.store.Set("/test/data/def", "child")
+			tr.Store.Set("/test/data", "parent")
+			tr.Store.Set("/test/data/def", "child")
 		},
 	},
 	templateTest{
@@ -484,7 +484,7 @@ key: {{$data}}
 key: VmFsdWU=
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", `Value`)
+			tr.Store.Set("/test/data", `Value`)
 		},
 	},
 	templateTest{
@@ -506,7 +506,7 @@ key: {{$data}}
 key: Value
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/data", `VmFsdWU=`)
+			tr.Store.Set("/test/data", `VmFsdWU=`)
 		},
 	}, templateTest{
 		desc: "seq test",
@@ -539,7 +539,7 @@ keys = [
 [1 2 3]
 `,
 		updateStore: func(tr *TemplateResource) {
-			tr.store.Set("/test/count", "3")
+			tr.Store.Set("/test/count", "3")
 		},
 	},
 }
@@ -555,21 +555,22 @@ func TestTemplates(t *testing.T) {
 // in the templateTest, writes a config file, and compares the result against the expectation
 // in the templateTest.
 func ExecuteTestTemplate(tt templateTest, t *testing.T) {
-	setupDirectoriesAndFiles(tt, t)
-	defer os.RemoveAll("test")
+	fs := afero.NewMemMapFs()
+	setupDirectoriesAndFiles(tt, t, fs)
+	defer fs.RemoveAll("test")
 
-	tr, err := templateResource()
+	tr, err := templateResource(fs)
 	if err != nil {
 		t.Errorf(tt.desc + ": failed to create TemplateResource: " + err.Error())
 	}
 
 	tt.updateStore(tr)
 
-	if err := tr.createStageFile(); err != nil {
+	if err := tr.CreateStageFile(); err != nil {
 		t.Errorf(tt.desc + ": failed createStageFile: " + err.Error())
 	}
 
-	actual, err := ioutil.ReadFile(tr.StageFile.Name())
+	actual, err := afero.ReadFile(fs, tr.StageFile.Name())
 	if err != nil {
 		t.Errorf(tt.desc + ": failed to read StageFile: " + err.Error())
 	}
@@ -590,29 +591,29 @@ func ExecuteTestTemplate(tt templateTest, t *testing.T) {
 
 // setUpDirectoriesAndFiles creates folders for the toml, tmpl, and output files and
 // creates the toml and tmpl files as specified in the templateTest struct.
-func setupDirectoriesAndFiles(tt templateTest, t *testing.T) {
+func setupDirectoriesAndFiles(tt templateTest, t *testing.T, fs afero.Fs) {
 	// create confd directory and toml file
-	if err := os.MkdirAll("./test/confd", os.ModePerm); err != nil {
+	if err := fs.MkdirAll("./test/confd", os.ModePerm); err != nil {
 		t.Errorf(tt.desc + ": failed to created confd directory: " + err.Error())
 	}
-	if err := ioutil.WriteFile(tomlFilePath, []byte(tt.toml), os.ModePerm); err != nil {
+	if err := afero.WriteFile(fs, tomlFilePath, []byte(tt.toml), os.ModePerm); err != nil {
 		t.Errorf(tt.desc + ": failed to write toml file: " + err.Error())
 	}
 	// create templates directory and tmpl file
-	if err := os.MkdirAll("./test/templates", os.ModePerm); err != nil {
+	if err := fs.MkdirAll("./test/templates", os.ModePerm); err != nil {
 		t.Errorf(tt.desc + ": failed to create template directory: " + err.Error())
 	}
-	if err := ioutil.WriteFile(tmplFilePath, []byte(tt.tmpl), os.ModePerm); err != nil {
+	if err := afero.WriteFile(fs, tmplFilePath, []byte(tt.tmpl), os.ModePerm); err != nil {
 		t.Errorf(tt.desc + ": failed to write toml file: " + err.Error())
 	}
 	// create tmp directory for output
-	if err := os.MkdirAll("./test/tmp", os.ModePerm); err != nil {
+	if err := fs.MkdirAll("./test/tmp", os.ModePerm); err != nil {
 		t.Errorf(tt.desc + ": failed to create tmp directory: " + err.Error())
 	}
 }
 
 // templateResource creates a templateResource for creating a config file
-func templateResource() (*TemplateResource, error) {
+func templateResource(fs afero.Fs) (*TemplateResource, error) {
 	backendConf := backends.Config{
 		Backend: "env"}
 	client, err := backends.New(backendConf)
@@ -625,7 +626,7 @@ func templateResource() (*TemplateResource, error) {
 		TemplateDir: "./test/templates",
 	}
 
-	tr, err := NewTemplateResource(tomlFilePath, config)
+	tr, err := NewTemplateResource(fs, tomlFilePath, config)
 	if err != nil {
 		return nil, err
 	}

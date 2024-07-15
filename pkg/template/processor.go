@@ -7,6 +7,7 @@ import (
 
 	"github.com/abtreece/confd/pkg/log"
 	util "github.com/abtreece/confd/pkg/util"
+	"github.com/spf13/afero"
 )
 
 type Processor interface {
@@ -110,9 +111,10 @@ func (p *watchProcessor) monitorPrefix(t *TemplateResource) {
 
 func getTemplateResources(config Config) ([]*TemplateResource, error) {
 	var lastError error
+	fs := afero.NewOsFs()
 	templates := make([]*TemplateResource, 0)
 	log.Debug("Loading template resources from confdir " + config.ConfDir)
-	if !util.IsFileExist(config.ConfDir) {
+	if !util.IsFileExist(fs, config.ConfDir) {
 		log.Warning(fmt.Sprintf("Cannot load template resources: confdir '%s' does not exist", config.ConfDir))
 		return nil, nil
 	}
@@ -127,7 +129,7 @@ func getTemplateResources(config Config) ([]*TemplateResource, error) {
 
 	for _, p := range paths {
 		log.Debug(fmt.Sprintf("Found template: %s", p))
-		t, err := NewTemplateResource(p, config)
+		t, err := NewTemplateResource(fs, p, config)
 		if err != nil {
 			lastError = err
 			continue

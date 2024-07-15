@@ -1,44 +1,92 @@
-**_Note: This is a divergent fork of [kelseyhightower/confd](https://github.com/kelseyhightower/confd). Backward compatibility is not guaranteed. YMMV_**
+# confd-testing
 
-# confd
+> [!WARNING]
+> This is a (unmaintained) fork of [abtreece/confd](https://github.com/abtreece/confd) adding
+> `afero` filesystem support for in-memory snapshot testing
 
-[![Integration Tests](https://github.com/abtreece/confd/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/abtreece/confd/actions/workflows/integration-tests.yml)
-[![CodeQL](https://github.com/abtreece/confd/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/abtreece/confd/actions/workflows/codeql-analysis.yml)
-[![Codecov](https://codecov.io/gh/abtreece/confd/branch/main/graph/badge.svg?token=bNZ2ngzQO1)](https://codecov.io/gh/abtreece/confd)
+Example code to snapshot test a confd configuration.
 
-`confd` is a lightweight configuration management tool focused on:
+```golang
+package test
 
-* keeping local configuration files up-to-date using data stored in [etcd](https://github.com/etcd-io/etcd),
-  [consul](http://consul.io), [dynamodb](http://aws.amazon.com/dynamodb/), [redis](http://redis.io),
-  [vault](https://vaultproject.io), [zookeeper](https://zookeeper.apache.org), [aws ssm parameter store](https://aws.amazon.com/ec2/systems-manager/) or env vars and processing [template resources](docs/template-resources.md).
-* reloading applications to pick up new config file changes
+import (
+  "os"
+  "path/filepath"
+  "testing"
 
-## Community
+  "github.com/gkampitakis/go-snaps/snaps"
+  "github.com/spf13/afero"
 
+  "github.com/abtreece/confd/pkg/backends"
+  "github.com/abtreece/confd/pkg/template"
+  "github.com/stretchr/testify/require"
+)
 
-## Building
+// fixed constants to prepare the afero filesystem for a test
+const (
+  confDir      = "confd"
+  confFileName = "config.toml"
+  tmplDir      = "templates"
+  tmplFileName = "test.conf.tmpl"
+  destDir      = "tmp"
+  destFileName = "test.conf"
+)
 
-Go 1.12 is required to build confd, which uses Go Modules
+func TestConfdConfig(t *testing.T) {
+  fs := afero.NewMemMapFs()
+  
+  // create directories in test fs
+  err := fs.MkdirAll(confDir, os.ModePerm)
+  require.NoError(t, err, "failed to create confd directory")
+  err = fs.MkdirAll(tmplDir, os.ModePerm)
+  require.NoError(t, err, "failed to create templates directory")
+  err = fs.MkdirAll(destDir, os.ModePerm)
+  require.NoError(t, err, "failed to create tmp directory")
+  confPath := filepath.Join(confDir, confFileName)
+  tmplPath := filepath.Join(tmplDir, tmplFileName)
 
+  // copy testdata toml file to test fs
+  toml, err := os.ReadFile("base-config.toml")
+  require.NoError(t, err, "failed to read toml file")
+  err = afero.WriteFile(fs, confPath, toml, os.ModePerm)
+
+  // copy testdata tmpl file to test fs
+  tmpl, err := os.ReadFile("base-test.conf.tmpl")
+  require.NoError(t, err, "failed to read tmpl file")
+  err = afero.WriteFile(fs, tmplPath, tmpl, os.ModePerm)
+  require.NoError(t, err, "failed to write tmpl file")
+
+  // create Template Resource
+  backendConf := backends.Config{
+    Backend: "env",
+  }
+  client, err := backends.New(backendConf)
+
+  config := template.Config{
+    StoreClient: client, // not used but must be set
+    TemplateDir: tmplDir,
+  }
+
+  tr, err := template.NewTemplateResource(fs, confPath, config)
+  if err != nil {
+    return nil, err
+  }
+  // override config src and dest to verify contents
+  tr.Src = tmplPath
+  tr.Dest = filepath.Join(destDir, destFileName)
+  tr.FileMode = 0666
+  require.NoError(t, err)
+
+  // prepare backend keys required for template under test
+  tr.Store.Set("/test/key", "abc")
+
+  // run template
+  err = tr.CreateStageFile()
+  require.NoError(t, err, "failed to create stage file")
+
+  // snapshot template
+  actual, err := afero.ReadFile(fs, tr.StageFile.Name())
+  require.NoError(t, err, "failed to read StageFile")
+  snaps.WithConfig(snaps.Filename("base")).MatchSnapshot(t, string(actual))
+}
 ```
-$ git clone https://github.com/abtreece/confd.git
-$ cd confd
-$ make
-```
-
-You should now have `confd` in your `bin/` directory:
-
-```
-$ ls bin/
-confd
-```
-
-## Getting Started
-
-Before we begin be sure to [download and install confd](docs/installation.md).
-
-* [quick start guide](docs/quick-start-guide.md)
-
-## Next steps
-
-Check out the [docs directory](docs) for more docs.

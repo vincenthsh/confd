@@ -1,7 +1,6 @@
 package util
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,127 +8,134 @@ import (
 	"testing"
 
 	"github.com/abtreece/confd/pkg/log"
+	"github.com/spf13/afero"
 )
 
 // createDirStructure() creates the following directory structure:
-// ├── other
-// │   ├── sym1.toml
-// │   └── sym2.toml
-// └── root
-//     ├── root.other1
-//     ├── root.toml
-//     ├── subDir1
-//     │   ├── sub1.other
-//     │   ├── sub1.toml
-//     │   └── sub12.toml
-//     ├── subDir2
-//     │   ├── sub2.other
-//     │   ├── sub2.toml
-//     │   ├── sub22.toml
-//     │   └── subSubDir
-//     │       ├── subsub.other
-//     │       ├── subsub.toml
-//     │       ├── subsub2.toml
-//     │       └── sym2.toml -> ../../../other/sym2.toml
-//     └── sym1.toml -> ../other/sym1.toml
-func createDirStructure() (string, error) {
+//
+//	├── other
+//	│   ├── sym1.toml
+//	│   └── sym2.toml
+//	└── root
+//	    ├── root.other1
+//	    ├── root.toml
+//	    ├── subDir1
+//	    │   ├── sub1.other
+//	    │   ├── sub1.toml
+//	    │   └── sub12.toml
+//	    ├── subDir2
+//	    │   ├── sub2.other
+//	    │   ├── sub2.toml
+//	    │   ├── sub22.toml
+//	    │   └── subSubDir
+//	    │       ├── subsub.other
+//	    │       ├── subsub.toml
+//	    │       ├── subsub2.toml
+//	    │       └── sym2.toml -> ../../../other/sym2.toml
+//	    └── sym1.toml -> ../other/sym1.toml
+func createDirStructure(fs afero.Fs) (string, error) {
 	mod := os.FileMode(0755)
 	flag := os.O_RDWR | os.O_CREATE | os.O_EXCL
-	tmpDir, err := ioutil.TempDir("", "")
+	tmpDir, err := afero.TempDir(fs, "", "")
 	if err != nil {
 		return "", err
 	}
 
 	otherDir := filepath.Join(tmpDir, "other")
-	err = os.Mkdir(otherDir, mod)
+	err = fs.Mkdir(otherDir, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(otherDir+"/sym1.toml", flag, mod)
+	_, err = fs.OpenFile(otherDir+"/sym1.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(otherDir+"/sym2.toml", flag, mod)
+	_, err = fs.OpenFile(otherDir+"/sym2.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
 
 	rootDir := filepath.Join(tmpDir, "root")
-	err = os.Mkdir(rootDir, mod)
+	err = fs.Mkdir(rootDir, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(rootDir+"/root.toml", flag, mod)
+	_, err = fs.OpenFile(rootDir+"/root.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(rootDir+"/root.other1", flag, mod)
-	if err != nil {
-		return "", err
-	}
-	err = os.Symlink(otherDir+"/sym1.toml", rootDir+"/sym1.toml")
-	if err != nil {
-		return "", err
-	}
-	err = os.Symlink(otherDir, rootDir+"/other")
+	_, err = fs.OpenFile(rootDir+"/root.other1", flag, mod)
 	if err != nil {
 		return "", err
 	}
 
+	if linker, ok := fs.(afero.Linker); ok {
+		err = linker.SymlinkIfPossible(otherDir+"/sym1.toml", rootDir+"/sym1.toml")
+		if err != nil {
+			return "", err
+		}
+		err = linker.SymlinkIfPossible(otherDir, rootDir+"/other")
+		if err != nil {
+			return "", err
+		}
+	}
+
 	subDir := filepath.Join(rootDir, "subDir1")
-	err = os.Mkdir(subDir, mod)
+	err = fs.Mkdir(subDir, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir+"/sub1.toml", flag, mod)
+	_, err = fs.OpenFile(subDir+"/sub1.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir+"/sub12.toml", flag, mod)
+	_, err = fs.OpenFile(subDir+"/sub12.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir+"/sub1.other", flag, mod)
+	_, err = fs.OpenFile(subDir+"/sub1.other", flag, mod)
 	if err != nil {
 		return "", err
 	}
 	subDir2 := filepath.Join(rootDir, "subDir2")
-	err = os.Mkdir(subDir2, mod)
+	err = fs.Mkdir(subDir2, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir2+"/sub2.toml", flag, mod)
+	_, err = fs.OpenFile(subDir2+"/sub2.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir2+"/sub22.toml", flag, mod)
+	_, err = fs.OpenFile(subDir2+"/sub22.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subDir2+"/sub2.other", flag, mod)
+	_, err = fs.OpenFile(subDir2+"/sub2.other", flag, mod)
 	if err != nil {
 		return "", err
 	}
 	subSubDir := filepath.Join(subDir2, "subSubDir")
-	err = os.Mkdir(subSubDir, mod)
+	err = fs.Mkdir(subSubDir, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subSubDir+"/subsub.toml", flag, mod)
+	_, err = fs.OpenFile(subSubDir+"/subsub.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subSubDir+"/subsub2.toml", flag, mod)
+	_, err = fs.OpenFile(subSubDir+"/subsub2.toml", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.OpenFile(subSubDir+"/subsub.other", flag, mod)
+	_, err = fs.OpenFile(subSubDir+"/subsub.other", flag, mod)
 	if err != nil {
 		return "", err
 	}
-	err = os.Symlink(otherDir+"/sym2.toml", subSubDir+"/sym2.toml")
-	if err != nil {
-		return "", err
+	if linker, ok := fs.(afero.Linker); ok {
+		err = linker.SymlinkIfPossible(otherDir+"/sym2.toml", subSubDir+"/sym2.toml")
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// tmpDir may contain symlinks itself
@@ -141,13 +147,14 @@ func createDirStructure() (string, error) {
 }
 
 func TestRecursiveFilesLookup(t *testing.T) {
+	fs := afero.NewOsFs() // OS filesystem for symlink support
 	log.SetLevel("warn")
 	// Setup temporary directories
-	rootDir, err := createDirStructure()
+	rootDir, err := createDirStructure(fs)
 	if err != nil {
 		t.Errorf("Failed to create temp dirs: %s", err.Error())
 	}
-	defer os.RemoveAll(rootDir)
+	defer fs.RemoveAll(rootDir)
 	files, err := RecursiveFilesLookup(rootDir+"/root", "*toml")
 	if err != nil {
 		t.Errorf("Failed to run recursiveFindFiles, got error: " + err.Error())
@@ -178,8 +185,9 @@ func TestRecursiveFilesLookup(t *testing.T) {
 
 func TestIsConfigChangedTrue(t *testing.T) {
 	log.SetLevel("warn")
-	src, err := ioutil.TempFile("", "src")
-	defer os.Remove(src.Name())
+	fs := afero.NewOsFs() // posix stats doesn't support memMapFs
+	src, err := afero.TempFile(fs, "", "src")
+	defer fs.Remove(src.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -187,8 +195,8 @@ func TestIsConfigChangedTrue(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	dest, err := ioutil.TempFile("", "dest")
-	defer os.Remove(dest.Name())
+	dest, err := afero.TempFile(fs, "", "dest")
+	defer fs.Remove(dest.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -196,7 +204,7 @@ func TestIsConfigChangedTrue(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	status, err := IsConfigChanged(src.Name(), dest.Name())
+	status, err := IsConfigChanged(fs, src.Name(), dest.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -207,8 +215,9 @@ func TestIsConfigChangedTrue(t *testing.T) {
 
 func TestIsConfigChangedFalse(t *testing.T) {
 	log.SetLevel("warn")
-	src, err := ioutil.TempFile("", "src")
-	defer os.Remove(src.Name())
+	fs := afero.NewOsFs() // posix stats doesn't support memMapFs
+	src, err := afero.TempFile(fs, "", "src")
+	defer fs.Remove(src.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -216,8 +225,8 @@ func TestIsConfigChangedFalse(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	dest, err := ioutil.TempFile("", "dest")
-	defer os.Remove(dest.Name())
+	dest, err := afero.TempFile(fs, "", "dest")
+	defer fs.Remove(dest.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -225,7 +234,7 @@ func TestIsConfigChangedFalse(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	status, err := IsConfigChanged(src.Name(), dest.Name())
+	status, err := IsConfigChanged(fs, src.Name(), dest.Name())
 	if err != nil {
 		t.Errorf(err.Error())
 	}

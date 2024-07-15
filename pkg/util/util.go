@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/abtreece/confd/pkg/log"
+	"github.com/spf13/afero"
 )
 
 // Nodes is a custom flag Var representing a list of etcd nodes.
@@ -46,8 +47,8 @@ func ArrayShift(array *[]string, position int, value string) {
 }
 
 // isFileExist reports whether path exits.
-func IsFileExist(fpath string) bool {
-	if _, err := os.Stat(fpath); os.IsNotExist(err) {
+func IsFileExist(fs afero.Fs, fpath string) bool {
+	if _, err := fs.Stat(fpath); os.IsNotExist(err) {
 		return false
 	}
 	return true
@@ -57,15 +58,15 @@ func IsFileExist(fpath string) bool {
 // Two config files are equal when they have the same file contents and
 // Unix permissions. The owner, group, and mode must match.
 // It return false in other cases.
-func IsConfigChanged(src, dest string) (bool, error) {
-	if !IsFileExist(dest) {
+func IsConfigChanged(fs afero.Fs, src, dest string) (bool, error) {
+	if !IsFileExist(fs, dest) {
 		return true, nil
 	}
-	d, err := FileStat(dest)
+	d, err := FileStat(fs, dest)
 	if err != nil {
 		return true, err
 	}
-	s, err := FileStat(src)
+	s, err := FileStat(fs, src)
 	if err != nil {
 		return true, err
 	}

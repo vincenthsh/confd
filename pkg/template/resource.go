@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/user"
@@ -20,6 +19,7 @@ import (
 	"github.com/abtreece/confd/pkg/log"
 	util "github.com/abtreece/confd/pkg/util"
 	"github.com/kelseyhightower/memkv"
+	"github.com/spf13/afero"
 )
 
 type Config struct {
@@ -51,21 +51,22 @@ type TemplateResource struct {
 	Prefix        string
 	ReloadCmd     string `toml:"reload_cmd"`
 	Src           string
-	StageFile     *os.File
+	StageFile     afero.File
 	Uid           int
 	funcMap       map[string]interface{}
 	lastIndex     uint64
 	keepStageFile bool
 	noop          bool
-	store         memkv.Store
+	Store         memkv.Store
 	storeClient   backends.StoreClient
 	syncOnly      bool
+	fs            afero.Fs
 }
 
 var ErrEmptySrc = errors.New("empty src template")
 
 // NewTemplateResource creates a TemplateResource.
-func NewTemplateResource(path string, config Config) (*TemplateResource, error) {
+func NewTemplateResource(fs afero.Fs, path string, config Config) (*TemplateResource, error) {
 	if config.StoreClient == nil {
 		return nil, errors.New("A valid StoreClient is required.")
 	}
@@ -75,7 +76,7 @@ func NewTemplateResource(path string, config Config) (*TemplateResource, error) 
 	tc := &TemplateResourceConfig{TemplateResource{Uid: -1, Gid: -1}}
 
 	log.Debug("Loading template resource from " + path)
-	_, err := toml.DecodeFile(path, &tc)
+	_, err := toml.DecodeFS(afero.NewIOFS(fs), path, &tc)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot process template resource %s - %s", path, err.Error())
 	}
@@ -85,9 +86,10 @@ func NewTemplateResource(path string, config Config) (*TemplateResource, error) 
 	tr.noop = config.Noop
 	tr.storeClient = config.StoreClient
 	tr.funcMap = newFuncMap()
-	tr.store = memkv.New()
+	tr.Store = memkv.New()
 	tr.syncOnly = config.SyncOnly
-	addFuncs(tr.funcMap, tr.store.FuncMap)
+	tr.fs = fs
+	addFuncs(tr.funcMap, tr.Store.FuncMap)
 
 	if config.Prefix != "" {
 		tr.Prefix = config.Prefix
@@ -147,49 +149,49 @@ func (t *TemplateResource) setVars() error {
 	}
 	log.Debug("Got the following map from store: %v", result)
 
-	t.store.Purge()
+	t.Store.Purge()
 
 	for k, v := range result {
-		t.store.Set(path.Join("/", strings.TrimPrefix(k, t.Prefix)), v)
+		t.Store.Set(path.Join("/", strings.TrimPrefix(k, t.Prefix)), v)
 	}
 	return nil
 }
 
-// createStageFile stages the src configuration file by processing the src
+// CreateStageFile stages the src configuration file by processing the src
 // template and setting the desired owner, group, and mode. It also sets the
 // StageFile for the template resource.
 // It returns an error if any.
-func (t *TemplateResource) createStageFile() error {
+func (t *TemplateResource) CreateStageFile() error {
 	log.Debug("Using source template " + t.Src)
 
-	if !util.IsFileExist(t.Src) {
+	if !util.IsFileExist(t.fs, t.Src) {
 		return errors.New("Missing template: " + t.Src)
 	}
 
 	log.Debug("Compiling source template " + t.Src)
 
-	tmpl, err := template.New(filepath.Base(t.Src)).Funcs(t.funcMap).ParseFiles(t.Src)
+	tmpl, err := template.New(filepath.Base(t.Src)).Funcs(t.funcMap).ParseFS(afero.NewIOFS(t.fs), t.Src)
 	if err != nil {
 		return fmt.Errorf("Unable to process template %s, %s", t.Src, err)
 	}
 
 	// create TempFile in Dest directory to avoid cross-filesystem issues
-	temp, err := ioutil.TempFile(filepath.Dir(t.Dest), "."+filepath.Base(t.Dest))
+	temp, err := afero.TempFile(t.fs, filepath.Dir(t.Dest), "."+filepath.Base(t.Dest))
 	if err != nil {
 		return err
 	}
 
 	if err = tmpl.Execute(temp, nil); err != nil {
 		temp.Close()
-		os.Remove(temp.Name())
+		t.fs.Remove(temp.Name())
 		return err
 	}
 	defer temp.Close()
 
 	// Set the owner, group, and mode on the stage file now to make it easier to
 	// compare against the destination configuration file later.
-	os.Chmod(temp.Name(), t.FileMode)
-	os.Chown(temp.Name(), t.Uid, t.Gid)
+	t.fs.Chmod(temp.Name(), t.FileMode)
+	t.fs.Chown(temp.Name(), t.Uid, t.Gid)
 	t.StageFile = temp
 	return nil
 }
@@ -204,11 +206,11 @@ func (t *TemplateResource) sync() error {
 	if t.keepStageFile {
 		log.Info("Keeping staged file: " + staged)
 	} else {
-		defer os.Remove(staged)
+		defer t.fs.Remove(staged)
 	}
 
 	log.Debug("Comparing candidate config to " + t.Dest)
-	ok, err := util.IsConfigChanged(staged, t.Dest)
+	ok, err := util.IsConfigChanged(t.fs, staged, t.Dest)
 	if err != nil {
 		log.Error(err.Error())
 	}
@@ -224,20 +226,20 @@ func (t *TemplateResource) sync() error {
 			}
 		}
 		log.Debug("Overwriting target config " + t.Dest)
-		err := os.Rename(staged, t.Dest)
+		err := t.fs.Rename(staged, t.Dest)
 		if err != nil {
 			if strings.Contains(err.Error(), "device or resource busy") {
 				log.Debug("Rename failed - target is likely a mount. Trying to write instead")
 				// try to open the file and write to it
 				var contents []byte
 				var rerr error
-				contents, rerr = ioutil.ReadFile(staged)
+				contents, rerr = afero.ReadFile(t.fs, staged)
 				if rerr != nil {
 					return rerr
 				}
-				err := ioutil.WriteFile(t.Dest, contents, t.FileMode)
+				err := afero.WriteFile(t.fs, t.Dest, contents, t.FileMode)
 				// make sure owner and group match the temp file, in case the file was created with WriteFile
-				os.Chown(t.Dest, t.Uid, t.Gid)
+				t.fs.Chown(t.Dest, t.Uid, t.Gid)
 				if err != nil {
 					return err
 				}
@@ -317,7 +319,7 @@ func (t *TemplateResource) process() error {
 	if err := t.setVars(); err != nil {
 		return err
 	}
-	if err := t.createStageFile(); err != nil {
+	if err := t.CreateStageFile(); err != nil {
 		return err
 	}
 	if err := t.sync(); err != nil {
@@ -329,10 +331,10 @@ func (t *TemplateResource) process() error {
 // setFileMode sets the FileMode.
 func (t *TemplateResource) setFileMode() error {
 	if t.Mode == "" {
-		if !util.IsFileExist(t.Dest) {
+		if !util.IsFileExist(t.fs, t.Dest) {
 			t.FileMode = 0644
 		} else {
-			fi, err := os.Stat(t.Dest)
+			fi, err := t.fs.Stat(t.Dest)
 			if err != nil {
 				return err
 			}

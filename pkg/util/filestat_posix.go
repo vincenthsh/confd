@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package util
@@ -7,14 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"syscall"
+
+	"github.com/spf13/afero"
 )
 
 // filestat return a FileInfo describing the named file.
-func FileStat(name string) (fi FileInfo, err error) {
-	if IsFileExist(name) {
-		f, err := os.Open(name)
+func FileStat(fs afero.Fs, name string) (fi FileInfo, err error) {
+	if IsFileExist(fs, name) {
+		f, err := fs.Open(name)
 		if err != nil {
 			return fi, err
 		}

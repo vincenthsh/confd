@@ -1,7 +1,6 @@
 package template
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,22 +8,23 @@ import (
 
 	"github.com/abtreece/confd/pkg/backends/env"
 	"github.com/abtreece/confd/pkg/log"
+	"github.com/spf13/afero"
 )
 
 // createTempDirs is a helper function which creates temporary directories
 // required by confd. createTempDirs returns the path name representing the
 // confd confDir.
 // It returns an error if any.
-func createTempDirs() (string, error) {
-	confDir, err := ioutil.TempDir("", "")
+func createTempDirs(fs afero.Fs) (string, error) {
+	confDir, err := afero.TempDir(fs, "", "")
 	if err != nil {
 		return "", err
 	}
-	err = os.Mkdir(filepath.Join(confDir, "templates"), 0755)
+	err = fs.Mkdir(filepath.Join(confDir, "templates"), 0755)
 	if err != nil {
 		return "", err
 	}
-	err = os.Mkdir(filepath.Join(confDir, "conf.d"), 0755)
+	err = fs.Mkdir(filepath.Join(confDir, "conf.d"), 0755)
 	if err != nil {
 		return "", err
 	}
@@ -42,30 +42,31 @@ keys = [
 
 func TestProcessTemplateResources(t *testing.T) {
 	log.SetLevel("warn")
+	fs := afero.NewOsFs() // Process uses os Fs
 	// Setup temporary conf, config, and template directories.
-	tempConfDir, err := createTempDirs()
+	tempConfDir, err := createTempDirs(fs)
 	if err != nil {
 		t.Errorf("Failed to create temp dirs: %s", err.Error())
 	}
-	defer os.RemoveAll(tempConfDir)
+	defer fs.RemoveAll(tempConfDir)
 
 	// Create the src template.
 	srcTemplateFile := filepath.Join(tempConfDir, "templates", "foo.tmpl")
-	err = ioutil.WriteFile(srcTemplateFile, []byte(`foo = {{getv "/foo"}}`), 0644)
+	err = afero.WriteFile(fs, srcTemplateFile, []byte(`foo = {{getv "/foo"}}`), 0644)
 	if err != nil {
 		t.Error(err.Error())
 	}
 
 	// Create the dest.
-	destFile, err := ioutil.TempFile("", "")
+	destFile, err := afero.TempFile(fs, "", "")
 	if err != nil {
 		t.Errorf("Failed to create destFile: %s", err.Error())
 	}
-	defer os.Remove(destFile.Name())
+	defer fs.Remove(destFile.Name())
 
 	// Create the template resource configuration file.
 	templateResourcePath := filepath.Join(tempConfDir, "conf.d", "foo.toml")
-	templateResourceFile, err := os.Create(templateResourcePath)
+	templateResourceFile, err := fs.Create(templateResourcePath)
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -99,7 +100,7 @@ func TestProcessTemplateResources(t *testing.T) {
 	}
 	// Verify the results.
 	expected := "foo = bar"
-	results, err := ioutil.ReadFile(destFile.Name())
+	results, err := afero.ReadFile(fs, destFile.Name())
 	if err != nil {
 		t.Error(err.Error())
 	}
